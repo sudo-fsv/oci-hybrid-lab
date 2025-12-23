@@ -1,0 +1,73 @@
+// Topology generated from network_transit_basic_layout_with_firewall_2021.svg
+digraph G {
+  rankdir=LR;
+  node [shape=box, style=rounded, fontsize=12];
+
+  Internet [label="Internet", shape=oval];
+  VCN_HUB [label="Firewall Hub VCN\n(pfSense firewall)"];
+  PF [label="pfSense\n(firewall)", shape=component];
+  VCN_ONPREM [label="VCN-OnPrem\n(Labs/On-Prem)"];
+  CPE [label="LibreSwan\n(CPE)", shape=component];
+  LPG_A [label="LPG-A\n(VCN-A LPG)", shape=note];
+
+  Internet -> DRG [label="IP over Internet (represents FastConnect path)"];
+  # DRG node is shown inside the Firewall Hub cluster; attachments to spokes shown below
+  DRG -> VCN_B [label="DRG Attachment"];
+  DRG -> VCN_C [label="DRG Attachment"];
+  VCN_HUB -> PF [label="firewall (LAN/TRUST)"];
+  Internet -> CPE [label="public IP"];
+  CPE -> Internet -> DRG;
+  VCN_ONPREM -> CPE [label="hosts"];
+
+  # Hub <-> Spoke local peering — only VCN-A uses LPG peering to the Firewall Hub
+  # Move the label upward so it doesn't get crossed by the Firewall Hub cluster line
+  LPG_A -> LPG_HUB [label="", dir=both, style=dashed, labelangle=99, labeldistance=2]
+
+  subgraph cluster_hub {
+    label = "Firewall Hub VCN";
+    rank = source;
+    VCN_HUB; PF; DRG [label="DRG (Transit)"];
+    LPG_HUB [label="LPG-Hub\n(local peering gateway)", shape=note];
+  }
+
+  subgraph cluster_onprem {
+    label = "On-Prem VCN (same region)";
+    VCN_ONPREM; CPE;
+  }
+
+  subgraph cluster_vcna {
+    label = "VCN-A (Web Tier)";
+    VCN_A [label="VCN-A"];
+    LB [label="Load Balancer\n(Private, TCP:80)"];
+    WEB1 [label="web1.example.com\n(Ubuntu + apache)"];
+    WEB2 [label="web2.example.com\n(Ubuntu + apache)"];
+    # removed workload-repr from VCN-A per design
+    LPG_A;
+  }
+
+  subgraph cluster_vcnb {
+    label = "VCN-B (Single workload)";
+    VCN_B [label="VCN-B"];
+    BM_B [label="Ubuntu + apache VM"];
+  }
+
+  subgraph cluster_vcnc {
+    label = "VCN-C (Single workload)";
+    VCN_C [label="VCN-C"];
+    BM_C [label="Ubuntu + apache VM"];
+  }
+
+  VCN_A -> LB [label="private LB"];
+  LB -> WEB1 [label="backend"];
+  LB -> WEB2 [label="backend"];
+  # VCN-A workload node removed; hub hosts edge removed
+  VCN_B -> BM_B [label="hosts"];
+  VCN_C -> BM_C [label="hosts"];
+
+  # Align VCN-A to the right of Firewall Hub (in LR layout)
+  VCN_HUB -> VCN_A [style=invis];
+
+  
+
+  # Logical routing arrows (hub routes to spokes and vice-versa) are implied by the LPG peering
+}
