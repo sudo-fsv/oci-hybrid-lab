@@ -79,3 +79,14 @@ terraform plan
 terraform apply
 ```
 
+
+## References:
+1. https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/fastconnectresiliency.htm
+2. https://docs.oracle.com/en-us/iaas/Content/Network/Reference/libreswanCPE.htm
+3. https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/scenario_g.htm
+4. https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/scenario_d.htm#scenariod 
+5. https://www.ateam-oracle.com/drgv2-hub-and-spoke-hub-nva-inspecting-the-traffic
+6. https://medium.com/oracledevs/pfsense-plus-ha-on-oci-fdcb1013f381
+7. https://docs.netgate.com/pfsense/en/latest/highavailability/test.html
+
+

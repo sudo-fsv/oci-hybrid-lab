@@ -81,9 +81,6 @@ resource "oci_core_instance" "vcn_c_workload" {
   }
 }
 
-
-
-
 # Attach VCN-B to the transit DRG
 resource "oci_core_drg_attachment" "vcn_b_drg_attach" {
   drg_id         = oci_core_drg.drg.id
