@@ -20,14 +20,19 @@ variable "shape" {
   default     = "VM.Standard.E3.Flex"
 }
 
-variable "pfsense_image_id" {
-  description = "Image OCID for pfSense appliance"
+variable "pfsense_image_source_uri" {
+  description = <<-EOF
+  Publicly accessible URI to an exported pfSense image used to create the custom OCI image"
+  SHA256 (pfSense-CE-memstick-serial-2.7.2-RELEASE-amd64.img.gz) = bc3ee3d82b8195387114a64c3398505f238a6cb5393ae9b2d45d1bf9408ed192
+  EOF
   type        = string
+  default     = "https://atxfiles.netgate.com/mirror/downloads/pfSense-CE-memstick-serial-2.7.2-RELEASE-amd64.img.gz"
 }
 
 variable "libreswan_image_id" {
   description = "Image OCID for Libreswan (on-prem)"
   type        = string
+  default     = "ocid1.image.oc1.us-sanjose-1.aaaaaaaak6vkpb64hy7ddvhka6tprdgkn6mm3iavodthoc4emenemdl5uvia"
 }
 
 variable "ssh_public_key" {
@@ -38,6 +43,7 @@ variable "ssh_public_key" {
 variable "ubuntu_image_id" {
   description = "Image OCID for Ubuntu (for web and representative workloads)"
   type        = string
+  default     = "ocid1.image.oc1.us-sanjose-1.aaaaaaaak6vkpb64hy7ddvhka6tprdgkn6mm3iavodthoc4emenemdl5uvia"
 }
 
 variable "web_domains" {

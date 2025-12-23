@@ -107,6 +107,17 @@ resource "oci_core_drg_attachment" "hub_drg_attach" {
 
 ### Firewall (pfsense) and remote CPE (libreswan)
 ### pfSense HA pair (CARP)
+resource "oci_core_image" "pfsense_custom" {
+  compartment_id = var.compartment_id
+  display_name   = "pfsense-custom"
+
+  image_source_details {
+    source_type = "objectStorageUri"
+    source_uri = var.pfsense_image_source_uri
+    operating_system = "FreeBSD"
+  }
+}
+
 resource "oci_core_instance" "pfsense_a" {
   compartment_id = var.compartment_id
   availability_domain = var.ad
@@ -129,7 +140,7 @@ resource "oci_core_instance" "pfsense_a" {
 
   source_details {
     source_type = "image"
-    source_id   = var.pfsense_image_id
+    source_id   = oci_core_image.pfsense_custom.id
     kms_key_id  = var.kms_key_ocid
   }
 
@@ -169,7 +180,7 @@ resource "oci_core_instance" "pfsense_b" {
 
   source_details {
     source_type = "image"
-    source_id   = var.pfsense_image_id
+    source_id   = oci_core_image.pfsense_custom.id
     kms_key_id  = var.kms_key_ocid
   }
 

@@ -13,9 +13,9 @@ This lab evaluates the following:
 > [!IMPORTANT]  
 > Crucial information for the savvy network engineer reading while looking for guidance:
 > 1. This is not a best practices design guide. Its sole purpose is to evaluate an OCI design to enforce centralized firewall inspection as needed.
-> 2. There are two other obvious design options for the same goal: using an LB sandwich or the newer OCI Network Firewall as service. The latter introduces unnecessary overhead to this lab, with the advantage of adding A/A to the equation. The latter does not offer vendor flexibility yet, with the advantage of eliminating the maintenance lifecycle overhead of firewall instances, plus the addition of natively integrated security policy integration.
-> 3. Latest designs for workload protection tend to favor descentralized approaches with dynamic policy enforcement (think K8s environment with ever changing IP addresses within the same address space, but also possibly across different name spaces within K8s iself). This is NOT in the scope of this lab that would be a good fit for VM-based enviroments or K8s environment concerned about node-egress traffic only (inter-cluster).
-> 4. OCI would allow this design scale to up to ~300 spoke VPCs, but that could easily create a bottle-neck depending on the scale of the E-W traffic.
+> 2. There are two other obvious design options for the same goal: using an LB sandwich or the newer OCI Network Firewall as service. The latter introduces unnecessary overhead to this lab, with the advantage of adding A/A to the equation. The latter does not offer vendor flexibility yet, with the advantage of eliminating the maintenance lifecycle overhead of firewall instances, plus the addition of natively integrated security policy management.
+> 3. Latest designs for workload protection tend to favor descentralized approaches with dynamic policy enforcement (think K8s environment with ever changing IP addresses within the same address space, but also possibly across different name spaces within K8s iself). This is NOT in the scope of this lab.
+> 4. OCI would allow this design to scale to up to ~300 spoke VPCs, but that could easily create a bottle-neck depending on the scale of the E-W traffic.
 > 5. The pfSense firewalls are not fully supported in OCI in their commercial version yet (like AWS and Azure), so enterprise support to achieve best networking benchmarks could be a problem.
 > 6. It is NOT in the scope of this lab to tweak any of the NVA's for performance: SR-IOV, DPDK, other drivers settings, kernel segmentation offloads and packet steering, MTU, etc.
 
@@ -61,7 +61,7 @@ Use `hub_spoke_lab/` as your working directory; populate a `terraform.tfvars` wi
 
 
 ## HOW-TO run it
-- Provide values for the following variables before `terraform apply`: `compartment_id`, `ad`, `pfsense_image_id`, `libreswan_image_id`, `ubuntu_image_id`, and `ssh_public_key`.
+- Provide values for the following variables before `terraform apply`: `compartment_id`, `ad`, and `ssh_public_key`.
 - Example `terraform.tfvars` (DO NOT check secrets into VCS):
 
 ```bash
@@ -70,9 +70,6 @@ region = "us-ashburn-1"
 compartment_id = "ocid1.compartment.oc1..example"
 ad = "Uocm:PHX-AD-1"
 shape = "VM.Standard.E3.Flex"
-pfsense_image_id = "ocid1.image.oc1..pfsense_example"
-libreswan_image_id = "ocid1.image.oc1..libreswan_example"
-ubuntu_image_id = "ocid1.image.oc1..ubuntu_example"
 ssh_public_key = "ssh-rsa AAAA... user@example"
 web_domains = ["app1.example.com", "app2.example.com"]
 lb_shape = "100Mbps"
@@ -98,5 +95,5 @@ terraform apply
 5. https://www.ateam-oracle.com/drgv2-hub-and-spoke-hub-nva-inspecting-the-traffic
 6. https://medium.com/oracledevs/pfsense-plus-ha-on-oci-fdcb1013f381
 7. https://docs.netgate.com/pfsense/en/latest/highavailability/test.html
-
-
+8. https://docs.oracle.com/en-us/iaas/images/ubuntu-2204/canonical-ubuntu-22-04-2025-10-31-0.htm
+9. https://atxfiles.netgate.com/mirror/downloads/
