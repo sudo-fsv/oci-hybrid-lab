@@ -1,7 +1,19 @@
 variable "region" {
   description = "OCI region"
   type        = string
-  default     = "us-ashburn-1"
+  default     = "us-phoenix-1"
+}
+
+variable "config_file_profile" {
+  description = "OCI CLI config profile to use for provider authentication"
+  type        = string
+  default     = "DEFAULT"
+}
+
+variable "oci_cli_profile" {
+  description = "OCI CLI profile name to use in external/local-exec calls"
+  type        = string
+  default     = "DEFAULT"
 }
 
 variable "compartment_id" {
@@ -10,40 +22,48 @@ variable "compartment_id" {
 }
 
 variable "ad" {
-  description = "Availability Domain"
+  description = "Availability Domain index"
   type        = string
+  default     = "1"
+}
+
+variable "ad_ha" {
+  description = "Availability Domain index for HA instances"
+  type        = string
+  default     = "2"
 }
 
 variable "shape" {
   description = "Instance shape"
   type        = string
-  default     = "VM.Standard.E3.Flex"
+  default     = "VM.Standard.E6.Flex"
 }
 
-variable "pfsense_image_source_uri" {
+variable "pfsense_image_source_local_path" {
   description = <<-EOF
-  Publicly accessible URI to an exported pfSense image used to create the custom OCI image"
-  SHA256 (pfSense-CE-memstick-serial-2.7.2-RELEASE-amd64.img.gz) = bc3ee3d82b8195387114a64c3398505f238a6cb5393ae9b2d45d1bf9408ed192
+  Local path to the pfSense image to upload to OCI Object Storage.
   EOF
   type        = string
-  default     = "https://atxfiles.netgate.com/mirror/downloads/pfSense-CE-memstick-serial-2.7.2-RELEASE-amd64.img.gz"
-}
+  default     = "./images/pfSense-CE-memstick-serial-2.7.2-RELEASE-amd64.img.gz"
+  }
 
 variable "libreswan_image_id" {
   description = "Image OCID for Libreswan (on-prem)"
   type        = string
-  default     = "ocid1.image.oc1.us-sanjose-1.aaaaaaaak6vkpb64hy7ddvhka6tprdgkn6mm3iavodthoc4emenemdl5uvia"
+  default     = "ocid1.image.oc1.phx.aaaaaaaa5gpxxac3r7wcxdumlaoac3o6hby3rqawsi3sorcr734cyx37yvca"
 }
 
 variable "ssh_public_key" {
   description = "SSH public key for instances"
   type        = string
+  sensitive   = true // not really, but it is too noisy in logs
+  default     = "./secrets/oci-lab-test.pub"
 }
 
 variable "ubuntu_image_id" {
   description = "Image OCID for Ubuntu (for web and representative workloads)"
   type        = string
-  default     = "ocid1.image.oc1.us-sanjose-1.aaaaaaaak6vkpb64hy7ddvhka6tprdgkn6mm3iavodthoc4emenemdl5uvia"
+  default     = "ocid1.image.oc1.phx.aaaaaaaa5gpxxac3r7wcxdumlaoac3o6hby3rqawsi3sorcr734cyx37yvca"
 }
 
 variable "web_domains" {
@@ -79,19 +99,37 @@ variable "kms_key_ocid" {
 variable "onprem_cidr" {
   description = "On-prem VCN CIDR to advertise from Libreswan"
   type        = string
-  default     = "192.168.100.0/24"
+  default     = "172.16.0.0/16"
 }
 
-variable "oci_bgp_peer_ip" {
-  description = "Optional: Oracle side BGP peer IP to configure in Libreswan user_data"
+variable "libreswan_vm_private_ip" {
+  description = "Static private IP to assign to the Libreswan VM's primary VNIC"
   type        = string
-  default     = "169.254.2.5"
+  default     = "172.16.0.55"
 }
 
-variable "cpe_bgp_peer_ip" {
-  description = "Optional: CPE (Libreswan) BGP interface IP for tunnel local endpoint"
+variable "oci_bgp_peer_ip_1" {
+  description = "Oracle side BGP peer IP for tunnel 1"
   type        = string
-  default     = "169.254.2.6"
+  default     = "169.254.2.5/30"
+}
+
+variable "cpe_bgp_peer_ip_1" {
+  description = "CPE (Libreswan) BGP interface IP for tunnel 1 (local endpoint)"
+  type        = string
+  default     = "169.254.2.6/30"
+}
+
+variable "oci_bgp_peer_ip_2" {
+  description = "Oracle side BGP peer IP for tunnel 2"
+  type        = string
+  default     = "169.254.2.9/30"
+}
+
+variable "cpe_bgp_peer_ip_2" {
+  description = "CPE (Libreswan) BGP interface IP for tunnel 2 (local endpoint)"
+  type        = string
+  default     = "169.254.2.10/30"
 }
 
 variable "cpe_bgp_asn" {

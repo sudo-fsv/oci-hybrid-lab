@@ -8,5 +8,7 @@ terraform {
 }
 
 provider "oci" {
-  region = var.region
+  region              = var.region
+  auth                = "SecurityToken"
+  config_file_profile = "DEFAULT" // var.config_file_profile
 }

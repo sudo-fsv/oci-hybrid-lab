@@ -57,18 +57,17 @@ This repository contains Terraform code to build a small hub-and-spoke OCI lab w
     - Sensitive values (PSKs, pfSense passwords) are handled as Terraform sensitive variables or generated resources (e.g., `random_password`).
     - The configuration targets OCI Provider v7.29.0 resource shapes (IPsec tunnel management, LB/Backend resources, etc.).
 
-Use `hub_spoke_lab/` as your working directory; populate a `terraform.tfvars` with image OCIDs, `compartment_id`, `ad`, and secrets, then run `terraform init`, `terraform plan`, and `terraform apply`.
+Use `hub_spoke_lab/` as your working directory; populate a `terraform.tfvars` with image OCIDs, `compartment_id`, and secrets, then run `terraform init`, `terraform plan`, and `terraform apply`.
 
 
 ## HOW-TO run it
-- Provide values for the following variables before `terraform apply`: `compartment_id`, `ad`, and `ssh_public_key`.
+- Provide values for the following variables before `terraform apply`: `compartment_id`, and `ssh_public_key`.
 - Example `terraform.tfvars` (DO NOT check secrets into VCS):
 
 ```bash
 # Example terraform.tfvars for hub_spoke_lab — replace placeholders with real values
 region = "us-ashburn-1"
 compartment_id = "ocid1.compartment.oc1..example"
-ad = "Uocm:PHX-AD-1"
 shape = "VM.Standard.E3.Flex"
 ssh_public_key = "ssh-rsa AAAA... user@example"
 web_domains = ["app1.example.com", "app2.example.com"]

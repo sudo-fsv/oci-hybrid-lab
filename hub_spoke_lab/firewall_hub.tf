@@ -1,9 +1,12 @@
 ### Hub and firewall resources
 resource "oci_core_vcn" "firewall_hub" {
   compartment_id = var.compartment_id
-  cidr_block     = "10.10.1.0/16"
+  cidr_block     = "10.10.0.0/16"
   display_name   = "Firewall-Hub"
-  dns_label      = "firewallhub"
+}
+
+data "http" "my_ip" {
+  url = "https://checkip.amazonaws.com/"
 }
 
 # Hub public subnet
@@ -12,8 +15,6 @@ resource "oci_core_subnet" "hub_wan" {
   vcn_id             = oci_core_vcn.firewall_hub.id
   cidr_block         = "10.10.1.0/24"
   display_name       = "hub-wan-subnet"
-  dns_label          = "hubwan"
-  availability_domain = var.ad
   route_table_id     = oci_core_route_table.hub_rt.id
 }
 
@@ -30,9 +31,7 @@ resource "oci_core_subnet" "hub_trust" {
   vcn_id             = oci_core_vcn.firewall_hub.id
   cidr_block         = "10.10.2.0/24"
   display_name       = "hub-trust-subnet"
-  dns_label          = "hubtrust"
-  availability_domain = var.ad
-  route_table_id     = oci_core_route_table.hub_trust_rt.id
+  # route_table_id     = oci_core_route_table.hub_trust_rt.id
 }
 
 # Hub route table: Internet + placeholders for spoke peering routes
@@ -82,11 +81,15 @@ resource "oci_core_security_list" "hub_sec" {
   display_name   = "hub-security-list"
   ingress_security_rules {
     protocol = "6"
-    source   = "0.0.0.0/0"
+    source   = "${trimspace(data.http.my_ip.response_body)}/32"
     tcp_options { 
       min = 22 
       max = 22 
-      }
+    }
+  }
+  ingress_security_rules {
+    protocol = "all"
+    source   = "${trimspace(data.http.my_ip.response_body)}/32"
   }
   egress_security_rules {
     protocol = "all"
@@ -113,14 +116,18 @@ resource "oci_core_image" "pfsense_custom" {
 
   image_source_details {
     source_type = "objectStorageUri"
-    source_uri = var.pfsense_image_source_uri
+    source_uri = format("https://objectstorage.%s.oraclecloud.com/n/%s/b/%s/o/%s",
+      var.region,
+      data.oci_objectstorage_namespace.ns.namespace,
+      oci_objectstorage_bucket.pfsense_bucket.name,
+      oci_objectstorage_object.pfsense_image.object)
     operating_system = "FreeBSD"
   }
 }
 
 resource "oci_core_instance" "pfsense_a" {
   compartment_id = var.compartment_id
-  availability_domain = var.ad
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[local.ad_index].name
   shape = var.shape
   display_name = "pfsense-a"
 
@@ -130,6 +137,11 @@ resource "oci_core_instance" "pfsense_a" {
   #   assign_public_ip = true
   #   display_name = "pfsense-a-wan"
   # }
+
+  shape_config {
+    ocpus = 8
+    memory_in_gbs = 16
+  }
 
   # TRUST/LAN vNIC
   create_vnic_details {
@@ -141,11 +153,11 @@ resource "oci_core_instance" "pfsense_a" {
   source_details {
     source_type = "image"
     source_id   = oci_core_image.pfsense_custom.id
-    kms_key_id  = var.kms_key_ocid
+    kms_key_id  = var.kms_key_ocid != "" ? var.kms_key_ocid : null
   }
 
   metadata = {
-    ssh_authorized_keys = var.ssh_public_key
+    ssh_authorized_keys = file(var.ssh_public_key)
     user_data = base64encode(templatefile("${path.module}/scripts/pfsense_user_data.tpl", {
       PFSENSE_ADMIN_PASSWORD = var.pfsense_admin_password,
       CARP_PASSWORD = var.carp_password,
@@ -162,7 +174,7 @@ resource "oci_core_instance" "pfsense_a" {
 
 resource "oci_core_instance" "pfsense_b" {
   compartment_id = var.compartment_id
-  availability_domain = var.ad
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[local.ad_index].name
   shape = var.shape
   display_name = "pfsense-b"
 
@@ -172,6 +184,11 @@ resource "oci_core_instance" "pfsense_b" {
   #   display_name = "pfsense-b-wan"
   # }
 
+  shape_config {
+    ocpus = 8
+    memory_in_gbs = 16
+  }
+  
   create_vnic_details {
     subnet_id = oci_core_subnet.hub_trust.id
     assign_public_ip = false
@@ -181,11 +198,11 @@ resource "oci_core_instance" "pfsense_b" {
   source_details {
     source_type = "image"
     source_id   = oci_core_image.pfsense_custom.id
-    kms_key_id  = var.kms_key_ocid
+    kms_key_id  = var.kms_key_ocid != "" ? var.kms_key_ocid : null
   }
 
   metadata = {
-    ssh_authorized_keys = var.ssh_public_key
+    ssh_authorized_keys = file(var.ssh_public_key)
     user_data = base64encode(templatefile("${path.module}/scripts/pfsense_user_data.tpl", {
       PFSENSE_ADMIN_PASSWORD = var.pfsense_admin_password,
       CARP_PASSWORD = var.carp_password,

@@ -1,5 +1,4 @@
-#!/bin/sh
-set -e
+#!/bin/sh -x
 
 # Template-injected variables
 PFSENSE_ADMIN_PASSWORD="${PFSENSE_ADMIN_PASSWORD}"
@@ -34,7 +33,7 @@ if [ ! -x /usr/local/sbin/pfSsh.php ]; then
   exit 1
 fi
 
-cat <<'PHP' > /tmp/pfsense_bootstrap.php
+sudo tee /tmp/pfsense_bootstrap.php > /dev/null << 'PHP'
 <?php
 require_once('/etc/inc/config.inc');
 global $config;
@@ -173,7 +172,10 @@ PHP
 
 export WAN_IF TRUST_IF WAN_VIP TRUST_VIP VHID ADV_SKEW CARP_PASSWORD PFSENSE_ADMIN_PASSWORD TRUST_PREFIXES
 
-/usr/local/sbin/pfSsh.php /tmp/pfsense_bootstrap.php || { echo "pfSsh.php execution failed" >&2; exit 1; }
+sudo /usr/local/sbin/pfSsh.php /tmp/pfsense_bootstrap.php || { echo "/usr/local/sbin/pfSsh.php execution failed" >&2; exit 1; }
 
 echo "pfSense bootstrap applied; rebooting to ensure CARP and rules take effect"
-shutdown -r now
+sudo shutdown -r now
+
+``` 
+WAN_VIP="${WAN_VIP}"

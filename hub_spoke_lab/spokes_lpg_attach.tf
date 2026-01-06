@@ -3,7 +3,6 @@ resource "oci_core_vcn" "vcn_a" {
   compartment_id = var.compartment_id
   cidr_block     = "10.20.0.0/16"
   display_name   = "VCN-A"
-  dns_label      = "vcna"
 }
 
 resource "oci_core_subnet" "vcn_a_public" {
@@ -11,8 +10,6 @@ resource "oci_core_subnet" "vcn_a_public" {
   vcn_id             = oci_core_vcn.vcn_a.id
   cidr_block         = "10.20.1.0/24"
   display_name       = "vcn-a-public-subnet"
-  dns_label          = "vcna-pub"
-  availability_domain = var.ad
   route_table_id     = oci_core_route_table.vcn_a_rt.id
 }
 
@@ -22,17 +19,20 @@ resource "oci_core_subnet" "vcn_a_private" {
   vcn_id             = oci_core_vcn.vcn_a.id
   cidr_block         = "10.20.2.0/24"
   display_name       = "vcn-a-private-subnet"
-  dns_label          = "vcna-priv"
-  availability_domain = var.ad
   route_table_id     = oci_core_route_table.vcn_a_rt.id
 }
 
 # Web backend instances (VCN-A)
 resource "oci_core_instance" "vcn_a_web1" {
   compartment_id = var.compartment_id
-  availability_domain = var.ad
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[local.ad_index].name
   shape = var.shape
   display_name = "vcn-a-web1"
+
+  shape_config {
+    ocpus = 8
+    memory_in_gbs = 16
+  }
 
   create_vnic_details {
     subnet_id = oci_core_subnet.vcn_a_public.id
@@ -43,20 +43,25 @@ resource "oci_core_instance" "vcn_a_web1" {
   source_details {
     source_type = "image"
     source_id   = var.ubuntu_image_id
-    kms_key_id  = var.kms_key_ocid
+    kms_key_id  = var.kms_key_ocid != "" ? var.kms_key_ocid : null
   }
 
   metadata = {
-    ssh_authorized_keys = var.ssh_public_key
+    ssh_authorized_keys = file(var.ssh_public_key)
     user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = var.web_domains[0] }))
   }
 }
 
 resource "oci_core_instance" "vcn_a_web2" {
   compartment_id = var.compartment_id
-  availability_domain = var.ad
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[local.ad_index].name
   shape = var.shape
   display_name = "vcn-a-web2"
+
+  shape_config {
+    ocpus = 8
+    memory_in_gbs = 16
+  }
 
   create_vnic_details {
     subnet_id = oci_core_subnet.vcn_a_public.id
@@ -67,12 +72,12 @@ resource "oci_core_instance" "vcn_a_web2" {
   source_details {
     source_type = "image"
     source_id   = var.ubuntu_image_id
-    kms_key_id  = var.kms_key_ocid
+    kms_key_id  = var.kms_key_ocid != "" ? var.kms_key_ocid : null
   }
 
   metadata = {
-    ssh_authorized_keys = var.ssh_public_key
-    user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = var.web_domains[1] }))
+    ssh_authorized_keys = file(var.ssh_public_key)
+    user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = var.web_domains[0] }))
   }
 }
 

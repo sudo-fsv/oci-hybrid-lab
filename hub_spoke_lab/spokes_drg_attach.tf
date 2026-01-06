@@ -3,7 +3,6 @@ resource "oci_core_vcn" "vcn_b" {
   compartment_id = var.compartment_id
   cidr_block     = "10.30.0.0/16"
   display_name   = "VCN-B"
-  dns_label      = "vcnb"
 }
 
 resource "oci_core_subnet" "vcn_b_public" {
@@ -11,16 +10,19 @@ resource "oci_core_subnet" "vcn_b_public" {
   vcn_id             = oci_core_vcn.vcn_b.id
   cidr_block         = "10.30.1.0/24"
   display_name       = "vcn-b-public-subnet"
-  dns_label          = "vcnb-pub"
-  availability_domain = var.ad
   route_table_id     = oci_core_route_table.vcn_b_rt.id
 }
 
 resource "oci_core_instance" "vcn_b_workload" {
   compartment_id = var.compartment_id
-  availability_domain = var.ad
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[local.ad_index].name
   shape = var.shape
   display_name = "vcn-b-workload"
+
+  shape_config {
+    ocpus = 8
+    memory_in_gbs = 16
+  }
 
   create_vnic_details {
     subnet_id = oci_core_subnet.vcn_b_public.id
@@ -31,11 +33,11 @@ resource "oci_core_instance" "vcn_b_workload" {
   source_details {
     source_type = "image"
     source_id   = var.ubuntu_image_id
-    kms_key_id  = var.kms_key_ocid
+    kms_key_id  = var.kms_key_ocid != "" ? var.kms_key_ocid : null
   }
 
   metadata = {
-    ssh_authorized_keys = var.ssh_public_key
+    ssh_authorized_keys = file(var.ssh_public_key)
     user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = "vcn-b-workload" }))
   }
 }
@@ -44,7 +46,6 @@ resource "oci_core_vcn" "vcn_c" {
   compartment_id = var.compartment_id
   cidr_block     = "10.40.0.0/16"
   display_name   = "VCN-C"
-  dns_label      = "vcnc"
 }
 
 resource "oci_core_subnet" "vcn_c_public" {
@@ -52,16 +53,19 @@ resource "oci_core_subnet" "vcn_c_public" {
   vcn_id             = oci_core_vcn.vcn_c.id
   cidr_block         = "10.40.1.0/24"
   display_name       = "vcn-c-public-subnet"
-  dns_label          = "vcnc-pub"
-  availability_domain = var.ad
   route_table_id     = oci_core_route_table.vcn_c_rt.id
 }
 
 resource "oci_core_instance" "vcn_c_workload" {
   compartment_id = var.compartment_id
-  availability_domain = var.ad
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[local.ad_index].name
   shape = var.shape
   display_name = "vcn-c-workload"
+
+  shape_config {
+    ocpus = 8
+    memory_in_gbs = 16
+  }
 
   create_vnic_details {
     subnet_id = oci_core_subnet.vcn_c_public.id
@@ -72,11 +76,11 @@ resource "oci_core_instance" "vcn_c_workload" {
   source_details {
     source_type = "image"
     source_id   = var.ubuntu_image_id
-    kms_key_id  = var.kms_key_ocid
+    kms_key_id  = var.kms_key_ocid != "" ? var.kms_key_ocid : null
   }
 
   metadata = {
-    ssh_authorized_keys = var.ssh_public_key
+    ssh_authorized_keys = file(var.ssh_public_key)
     user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = "vcn-c-workload" }))
   }
 }

@@ -1,9 +1,10 @@
-#!/bin/bash
+#!/bin/sh -x
+
 # Common web instance bootstrap
-apt-get update
-apt-get install -y apache2
-cat > /var/www/html/index.html <<EOF
+sudo apt-get update
+sudo apt-get install -y apache2
+sudo tee /var/www/html/index.html > /dev/null <<EOF
 <html><body><h1>${TITLE}</h1></body></html>
 EOF
-systemctl enable apache2
-systemctl start apache2
+sudo systemctl enable apache2
+sudo systemctl start apache2
