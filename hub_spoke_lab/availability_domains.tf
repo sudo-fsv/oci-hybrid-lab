@@ -1,3 +1,7 @@
+data "http" "my_ip" {
+  url = "https://checkip.amazonaws.com/"
+}
+
 data "oci_identity_availability_domains" "ads" {
   compartment_id = var.compartment_id
 }

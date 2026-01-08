@@ -42,6 +42,62 @@ resource "oci_core_network_security_group_security_rule" "libreswan_egress_inter
   destination               = "0.0.0.0/0"
 }
 
+resource "oci_core_network_security_group_security_rule" "libreswan_ingress_ipsec_peer1_udp500" {
+  network_security_group_id = oci_core_network_security_group.libreswan_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "17"
+  source                    = "${local.libreswan_peer_1}/32"
+  udp_options {
+    destination_port_range {
+      min = 500
+      max = 500
+    }
+  }
+  description = "Allow IKE (UDP/500) from OCI IPSEC peer 1"
+}
+
+resource "oci_core_network_security_group_security_rule" "libreswan_ingress_ipsec_peer1_udp4500" {
+  network_security_group_id = oci_core_network_security_group.libreswan_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "17"
+  source                    = "${local.libreswan_peer_1}/32"
+  udp_options {
+    destination_port_range {
+      min = 4500
+      max = 4500
+    }
+  }
+  description = "Allow NAT-T (UDP/4500) from OCI IPSEC peer 1"
+}
+
+resource "oci_core_network_security_group_security_rule" "libreswan_ingress_ipsec_peer2_udp500" {
+  network_security_group_id = oci_core_network_security_group.libreswan_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "17"
+  source                    = "${local.libreswan_peer_2}/32"
+  udp_options {
+    destination_port_range {
+      min = 500
+      max = 500
+    }
+  }
+  description = "Allow IKE (UDP/500) from OCI IPSEC peer 2"
+}
+
+resource "oci_core_network_security_group_security_rule" "libreswan_ingress_ipsec_peer2_udp4500" {
+  network_security_group_id = oci_core_network_security_group.libreswan_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "17"
+  source                    = "${local.libreswan_peer_2}/32"
+  udp_options {
+    destination_port_range {
+      min = 4500
+      max = 4500
+    }
+  }
+  description = "Allow NAT-T (UDP/4500) from OCI IPSEC peer 2"
+}
+
 # Pre-configure the DRG VPN with the reserved public IP, so we can bootstrap Libreswan
 # generate a strong pre-shared key for the IPSec connection (sensitive)
 resource "random_password" "libreswan_psk_1" {
@@ -58,7 +114,7 @@ resource "random_password" "libreswan_psk_2" {
 resource "oci_core_cpe" "libreswan_cpe" {
   compartment_id = var.compartment_id
   display_name   = "libreswan-cpe"
-  ip_address     = oci_core_public_ip.libreswan_reserved_ip.ip_address  // "192.168.254.254" // placeholder for oci_core_public_ip.libreswan_reserved_ip.ip_address
+  ip_address     = oci_core_public_ip.libreswan_reserved_ip.ip_address
 }
 
 # IPSec connection from the hub DRG to the Libreswan CPE. This will be created once the
@@ -69,7 +125,7 @@ resource "oci_core_ipsec" "libreswan_to_hub" {
   cpe_id         = oci_core_cpe.libreswan_cpe.id
   display_name   = "libreswan-to-firewall-hub"
   // Static routes are ignored when using BGP.
-  static_routes  = [format("%s/32", oci_load_balancer_load_balancer.vcn_a_lb.ip_address_details[0].ip_address)]
+  static_routes  = [var.onprem_cidr]
 }
 
 # Manage tunnel-specific settings (IKE, BGP, shared secret) for the IPSec connection
@@ -81,8 +137,8 @@ locals {
   # Map of tunnel id -> tunnel object for tunnels that expose a vpn_ip
   libreswan_tunnels_map = { for t in data.oci_core_ipsec_connection_tunnels.libreswan_tunnel.ip_sec_connection_tunnels : t.id => t if lookup(t, "vpn_ip", "") != "" }
   libreswan_tunnel_ips = [for t in values(local.libreswan_tunnels_map) : t.vpn_ip]
-  libreswan_peer_1 = length(local.libreswan_tunnel_ips) > 0 ? sort(local.libreswan_tunnel_ips)[0] : ""
-  libreswan_peer_2 = length(local.libreswan_tunnel_ips) > 1 ? sort(local.libreswan_tunnel_ips)[1] : ""
+  libreswan_peer_1 = length(local.libreswan_tunnel_ips) > 0 ? local.libreswan_tunnel_ips[0] : ""
+  libreswan_peer_2 = length(local.libreswan_tunnel_ips) > 1 ? local.libreswan_tunnel_ips[1] : ""
 }
 
 # Internet gateway for the Libreswan VCN (onprem)
@@ -148,7 +204,6 @@ resource "oci_core_ipsec_connection_tunnel_management" "libreswan_tunnel_2" {
       oracle_interface_ip = var.oci_bgp_peer_ip_2
     }
   shared_secret = random_password.libreswan_psk_2.result
-  depends_on = [ oci_core_ipsec_connection_tunnel_management.libreswan_tunnel_1 ]
 }
 
 # Bootstrap Libreswan instance as CPE
@@ -165,7 +220,6 @@ resource "oci_core_instance" "libreswan" {
   display_name = "libreswan-cpe"
   
   depends_on = [ 
-    oci_load_balancer_load_balancer.vcn_a_lb,
     oci_core_ipsec_connection_tunnel_management.libreswan_tunnel_1,
     oci_core_ipsec_connection_tunnel_management.libreswan_tunnel_2,
     oci_core_route_table.libreswan_cpe_rt,
@@ -196,14 +250,15 @@ resource "oci_core_instance" "libreswan" {
     user_data = base64encode(templatefile("${path.module}/scripts/libreswan_user_data.tpl", {
       PSK_1 = random_password.libreswan_psk_1.result,
       PSK_2 = random_password.libreswan_psk_2.result,
-      ONPREM_CIDR = var.onprem_cidr,
-      PRIVATE_LB_IP = oci_load_balancer_load_balancer.vcn_a_lb.ip_address_details[0].ip_address,
+      ONPREM_CIDR = cidrsubnet(var.onprem_cidr, 10, 0),
       OCI_IPSEC_PEER_1 = local.libreswan_peer_1,
       OCI_IPSEC_PEER_2 = local.libreswan_peer_2,
       OCI_BGP_PEER_IP_1 = split("/",var.oci_bgp_peer_ip_1)[0],
       OCI_BGP_PEER_IP_2 = split("/",var.oci_bgp_peer_ip_2)[0],
-      OCI_BGP_AS = var.oci_bgp_asn,
+      OCI_BGP_AS = oci_core_ipsec_connection_tunnel_management.libreswan_tunnel_1.bgp_session_info[0].oracle_bgp_asn,
       CPE_BGP_AS = var.cpe_bgp_asn,
+      CPE_BGP_PEER_IP_1 = var.cpe_bgp_peer_ip_1,
+      CPE_BGP_PEER_IP_2 = var.cpe_bgp_peer_ip_2,
       LIBRESWAN_PRIVATE_IP = var.libreswan_vm_private_ip,
       LIBRESWAN_RESERVED_PUBLIC_IP = oci_core_public_ip.libreswan_reserved_ip.ip_address
     }))
@@ -230,23 +285,7 @@ resource "null_resource" "libreswan_ip_association" {
       fi
       echo "Associating public ip ${oci_core_public_ip.libreswan_reserved_ip.id} -> private ip $private_id"
         oci network public-ip update --public-ip-id ${oci_core_public_ip.libreswan_reserved_ip.id} --private-ip-id "$private_id" --wait-for-state ASSIGNED --profile ${var.oci_cli_profile} --auth security_token
-      # # Retrieve the reserved public IP address and update the CPE resource with it
-      #   public_ip=$(oci network public-ip get --public-ip-id ${oci_core_public_ip.libreswan_reserved_ip.id} --query 'data."ip-address"' --raw-output --profile ${var.oci_cli_profile} --auth security_token)
-      # if [ -z "$public_ip" ] || [ "$public_ip" = "null" ]; then
-      #   echo "WARNING: could not read reserved public IP address for ${oci_core_public_ip.libreswan_reserved_ip.id}" >&2
-      # else
-      #   echo "Updating CPE ${oci_core_cpe.libreswan_cpe.id} ip_address -> $public_ip"
-      #     oci network cpe update --cpe-id ${oci_core_cpe.libreswan_cpe.id} --ip-address "$public_ip" --profile ${var.oci_cli_profile} --auth security_token || echo "Warning: cpe update failed" >&2
-      # fi
       echo '{"status":"ok"}'
     EOT
   }
-
-  # provisioner "local-exec" {
-  #   when    = destroy
-  #   command = <<-EOT
-  #     echo "Placeholder: dissociate reserved public IP from private IP (on destroy)"
-  #     # TODO: run 'oci network public-ip update --public-ip-id ... --private-ip-id ""' or other cleanup steps
-  #   EOT
-  # }
 }

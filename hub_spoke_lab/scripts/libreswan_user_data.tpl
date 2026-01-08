@@ -7,15 +7,29 @@
 PSK_1="${PSK_1}"
 PSK_2="${PSK_2}"
 ONPREM_CIDR="${ONPREM_CIDR}"
-PRIVATE_LB_IP="${PRIVATE_LB_IP}"
 OCI_BGP_PEER_IP_1="${OCI_BGP_PEER_IP_1}"
 OCI_BGP_PEER_IP_2="${OCI_BGP_PEER_IP_2}"
 OCI_BGP_AS="${OCI_BGP_AS}"
 OCI_IPSEC_PEER_1="${OCI_IPSEC_PEER_1}"
 OCI_IPSEC_PEER_2="${OCI_IPSEC_PEER_2}"
 CPE_BGP_AS="${CPE_BGP_AS}"
+CPE_BGP_PEER_IP_1="${CPE_BGP_PEER_IP_1}"
+CPE_BGP_PEER_IP_2="${CPE_BGP_PEER_IP_2}"
 LIBRESWAN_PRIVATE_IP="${LIBRESWAN_PRIVATE_IP}"
 LIBRESWAN_RESERVED_PUBLIC_IP="${LIBRESWAN_RESERVED_PUBLIC_IP}"
+
+# configure resolv.conf to use Quad9 as primary DNS (Ubuntu)
+# If /etc/resolv.conf is a symlink (commonly to systemd-resolved), back it up and replace it
+if [ -L /etc/resolv.conf ] || [ -f /etc/resolv.conf ]; then
+  sudo cp -a /etc/resolv.conf /etc/resolv.conf.backup || true
+  sudo rm -f /etc/resolv.conf || true
+fi
+sudo tee /etc/resolv.conf > /dev/null <<'EOF'
+nameserver 9.9.9.9
+nameserver 127.0.0.53
+options edns0 trust-ad
+search .
+EOF
 
 # enable ip forwarding
 sudo sysctl -w net.ipv4.ip_forward=1
@@ -26,51 +40,94 @@ sudo sysctl -w net.ipv4.conf.$(ip -o -4 addr list | grep "$LIBRESWAN_PRIVATE_IP"
 sudo sysctl -w net.ipv4.conf.default.accept_redirects=0
 sudo sysctl -w net.ipv4.conf.$(ip -o -4 addr list | grep "$LIBRESWAN_PRIVATE_IP" | awk '{print $2}' | head -n1).accept_redirects=0
 
-# install packages
-sudo apt-get update
-sudo apt-get install -y libreswan frr
+# function to install a package with retry logic and avoid apt locking issues
+apt_update_with_retry() {
+  local attempts=10
+  local count=0
+
+  while [ $count -lt $attempts ]; do
+    if sudo apt-get update; then
+      return 0
+    fi
+    count=$((count + 1))
+    sleep 10
+  done
+  return 1
+}
+
+install_with_retry() {
+  local package=$1
+  local attempts=10
+  local count=0
+
+  while [ $count -lt $attempts ]; do
+    if sudo apt-get install -y "$package"; then
+      return 0
+    fi
+    count=$((count + 1))
+    sleep 10
+  done
+  return 1
+}
+
+# install packages with retry
+apt_update_with_retry
+install_with_retry libreswan
+install_with_retry frr
+install_with_retry firewalld
+
+# add permanent rules to allow UDP/500 and UDP/4500 (IKE/NAT-T), TCP/22 (SSH), and ICMP from anywhere
+sudo systemctl enable firewalld
+sudo firewall-cmd --add-service="ssh"
+sudo firewall-cmd --add-service="ipsec"
+sudo firewall-cmd --add-service="bgp"
+sudo firewall-cmd --add-rich-rule="rule family='ipv4' protocol value='icmp' accept"
+sudo firewall-cmd --runtime-to-permanent
+sudo systemctl restart firewalld
+sudo firewall-cmd --list-all
 
 # configure ipsec (libreswan)
 sudo tee /etc/ipsec.conf > /dev/null <<EOF
-# basic ipsec.conf allowing the remote to connect with the shared PSK
 version 2.0
 config setup
   protostack=netkey
+
+conn %default
+  type=tunnel
+  authby=secret
+  auto=start
+  ikev2=insist
+  ike=aes_cbc256-sha2_384;modp1536
+  phase2alg=aes_gcm256;modp1536 
+  encapsulation=yes
+  rekey=yes
+  ikelifetime=28800s
+  salifetime=3600s
+  vti-routing=no
+  leftsubnet=0.0.0.0/0 
+  rightsubnet=0.0.0.0/0
+  pfs=yes
+  dpdaction=restart
+  dpddelay=10
+  dpdtimeout=30
 
 conn to-oci-1
   left=$LIBRESWAN_PRIVATE_IP
   leftid=$LIBRESWAN_RESERVED_PUBLIC_IP
   right=$OCI_IPSEC_PEER_1
   rightid=$OCI_IPSEC_PEER_1
-  leftsubnet=0.0.0.0/0 
-  rightsubnet=0.0.0.0/0
-  authby=secret
-  auto=start
-  ikev2=insist
-  ike=aes_cbc256-sha2_384;modp1536
-  phase2alg=aes_gcm256;modp1536 
-  encapsulation=yes
-  ikelifetime=28800s
-  salifetime=3600s
+  mark=5/0xffffffff
   vti-interface=vti1
-  vti-routing=no
+  leftvti=$CPE_BGP_PEER_IP_1
 
 conn to-oci-2
   left=$LIBRESWAN_PRIVATE_IP
   leftid=$LIBRESWAN_RESERVED_PUBLIC_IP
-  # only accept/connect to the configured OCI IPSec peer 2
   right=$OCI_IPSEC_PEER_2
   rightid=$OCI_IPSEC_PEER_2
-  authby=secret
-  auto=start
-  ikev2=insist
-  ike=aes_cbc256-sha2_384;modp1536
-  phase2alg=aes_gcm256;modp1536 
-  encapsulation=yes
-  ikelifetime=28800s
-  salifetime=3600s
+  mark=6/0xffffffff
   vti-interface=vti2
-  vti-routing=no
+  leftvti=$CPE_BGP_PEER_IP_2
 EOF
 
 # write PSKs (restrict to OCI IPSec peer)
@@ -79,11 +136,12 @@ $LIBRESWAN_RESERVED_PUBLIC_IP $OCI_IPSEC_PEER_1 : PSK "$PSK_1"
 $LIBRESWAN_RESERVED_PUBLIC_IP $OCI_IPSEC_PEER_2 : PSK "$PSK_2"
 EOF
 
-# Enable and start ipsec
-sudo systemctl enable ipsec
-sudo systemctl restart ipsec
+# start ipsec
+sudo ipsec verify
+sudo systemctl status ipsec
+sudo systemctl start ipsec
 
-# Configure FRR (bgpd)
+# configure FRR (bgpd)
 sudo tee /etc/frr/daemons > /dev/null <<'EOF'
 bgpd=yes
 ospfd=no
@@ -93,112 +151,53 @@ EOF
 
 sudo tee /etc/frr/frr.conf > /dev/null <<EOF
 frr version 7.5
+frr defaults traditional
 service integrated-vtysh-config
 !
-ip route add $OCI_BGP_PEER_IP_1 nexthop dev vti1
-ip route add $OCI_BGP_PEER_IP_2 nexthop dev vti2
+hostname libreswan-cpe
+log file /var/log/bgpd.log 
+log stdout informational
 !
 router bgp $CPE_BGP_AS
   bgp router-id $LIBRESWAN_PRIVATE_IP
+  timers 10 30
   neighbor $OCI_BGP_PEER_IP_1 remote-as $OCI_BGP_AS
+  neighbor $OCI_BGP_PEER_IP_1 ebgp-multihop 10
   neighbor $OCI_BGP_PEER_IP_2 remote-as $OCI_BGP_AS
+  neighbor $OCI_BGP_PEER_IP_2 ebgp-multihop 10
+
   address-family ipv4 unicast
     network $ONPREM_CIDR
     neighbor $OCI_BGP_PEER_IP_1 next-hop-self
     neighbor $OCI_BGP_PEER_IP_1 soft-reconfiguration inbound
-    neighbor $OCI_BGP_PEER_IP_1 route-map ACCEPT-OCI in
-    neighbor $OCI_BGP_PEER_IP_1 route-map ACCEPT-OCI out
+    neighbor $OCI_BGP_PEER_IP_1 route-map ALLOW-IN in
+    neighbor $OCI_BGP_PEER_IP_1 route-map ALLOW-OUT out
     neighbor $OCI_BGP_PEER_IP_2 next-hop-self
     neighbor $OCI_BGP_PEER_IP_2 soft-reconfiguration inbound
-    neighbor $OCI_BGP_PEER_IP_2 route-map ACCEPT-OCI in
-    neighbor $OCI_BGP_PEER_IP_2 route-map ACCEPT-OCI out
+    neighbor $OCI_BGP_PEER_IP_2 route-map ALLOW-IN in
+    neighbor $OCI_BGP_PEER_IP_2 route-map ALLOW-OUT out
   exit-address-family
 !
-  ip prefix-list ACCEPT-OCI seq 5 permit $ONPREM_CIDR
+ip prefix-list BGP-OUT seq 10 permit $ONPREM_CIDR
 !
-  route-map ACCEPT-OCI permit 10
-    match ip address prefix-list ACCEPT-OCI
-    set local-preference 200
-    set med 50
-    exit-route-map
+route-map ALLOW-OUT permit 10
+  match ip address prefix-list BGP-OUT
 !
+route-map ALLOW-IN permit 100
+!
+interface vti1
+  ip address $CPE_BGP_PEER_IP_1
+  no shutdown
+  exit
+interface vti2
+  ip address $CPE_BGP_PEER_IP_2
+  no shutdown
+  exit
+exit 
 EOF
 
 # enable and start frr
-sudo systemctl enable frr
+sudo systemctl status frr
 sudo systemctl restart frr
-
-# wait for BGP adjacency and install routes/ACLs for learned prefixes
-for i in {1..60}; do
-  if sudo vtysh -c "show ip bgp summary" 2>/dev/null | grep -q "Established"; then
-    break
-  fi
-  sleep 5
-done
-
-# collect learned prefixes from BGP and install iptables and routes
-LEARNED_PREFIXES=$(vtysh -c "show ip bgp" 2>/dev/null | grep -oE "([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}" | sort -u)
-for p in $LEARNED_PREFIXES; do
-  # allow forwarding to learned prefix
-  sudo iptables -C FORWARD -d $p -j ACCEPT 2>/dev/null || sudo iptables -I FORWARD -d $p -j ACCEPT
-  # install return route via ipsec virtual interface (common name ipsec0) if present
-  sudo ip route replace $p dev ipsec0 2>/dev/null || true
-done
-
-# ensure PRIVATE_LB_IP is reachable via the tunnel
-if [ -n "$PRIVATE_LB_IP" ]; then
-  sudo iptables -C FORWARD -d $PRIVATE_LB_IP/32 -j ACCEPT 2>/dev/null || sudo iptables -I FORWARD -d $PRIVATE_LB_IP/32 -j ACCEPT
-  sudo ip route replace $PRIVATE_LB_IP/32 dev ipsec0 2>/dev/null || true
-fi
-
-# Install a reconciliation script and systemd timer to persist routes/ACLs learned via BGP
-sudo tee /usr/local/bin/libreswan-reconcile.sh > /dev/null <<'SH'
-#!/bin/bash
-set -e
-# wait a short time for FRR/ipsec to settle
-sleep 5
-
-# collect learned prefixes from BGP and install iptables and routes
-LEARNED_PREFIXES=$(vtysh -c "show ip bgp" 2>/dev/null | grep -oE "([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}" | sort -u)
-for p in $LEARNED_PREFIXES; do
-  iptables -C FORWARD -d $p -j ACCEPT 2>/dev/null || iptables -I FORWARD -d $p -j ACCEPT
-  ip route replace $p dev ipsec0 2>/dev/null || true
-done
-
-# ensure PRIVATE_LB_IP route exists
-if [ -n "$PRIVATE_LB_IP" ]; then
-  iptables -C FORWARD -d $PRIVATE_LB_IP/32 -j ACCEPT 2>/dev/null || iptables -I FORWARD -d $PRIVATE_LB_IP/32 -j ACCEPT
-  ip route replace $PRIVATE_LB_IP/32 dev ipsec0 2>/dev/null || true
-fi
-
-exit 0
-SH
-sudo chmod +x /usr/local/bin/libreswan-reconcile.sh
-
-sudo tee /etc/systemd/system/libreswan-reconcile.service > /dev/null <<'UNIT'
-[Unit]
-Description=Libreswan reconciliation service
-After=network.target ipsec.service frr.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/libreswan-reconcile.sh
-UNIT
-
-sudo tee /etc/systemd/system/libreswan-reconcile.timer > /dev/null <<'UNIT'
-[Unit]
-Description=Run Libreswan reconciliation every 1 minute
-
-[Timer]
-OnBootSec=1min
-OnUnitActiveSec=1min
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-UNIT
-
-sudo systemctl daemon-reload || true
-sudo systemctl enable --now libreswan-reconcile.timer || true
 
 exit 0

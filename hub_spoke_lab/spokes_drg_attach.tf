@@ -38,7 +38,7 @@ resource "oci_core_instance" "vcn_b_workload" {
 
   metadata = {
     ssh_authorized_keys = file(var.ssh_public_key)
-    user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = "vcn-b-workload" }))
+    user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = "vcn-b-workload", LB_PRIV_SUBNET_CIDR = oci_core_subnet.vcn_a_private.cidr_block, ONPREM_CIDR = var.onprem_cidr }))
   }
 }
 
@@ -81,7 +81,7 @@ resource "oci_core_instance" "vcn_c_workload" {
 
   metadata = {
     ssh_authorized_keys = file(var.ssh_public_key)
-    user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = "vcn-c-workload" }))
+    user_data = base64encode(templatefile("${path.module}/scripts/web_user_data.tpl", { TITLE = "vcn-c-workload", LB_PRIV_SUBNET_CIDR = oci_core_subnet.vcn_a_private.cidr_block, ONPREM_CIDR = var.onprem_cidr}))
   }
 }
 

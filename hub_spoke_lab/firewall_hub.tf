@@ -1,12 +1,15 @@
-### Hub and firewall resources
+# ### Hub and firewall resources
+
+# Transit DRG used by the hub (kept as in original layout)
+resource "oci_core_drg" "drg" {
+  compartment_id = var.compartment_id
+  display_name   = "transit-drg"
+}
+
 resource "oci_core_vcn" "firewall_hub" {
   compartment_id = var.compartment_id
   cidr_block     = "10.10.0.0/16"
   display_name   = "Firewall-Hub"
-}
-
-data "http" "my_ip" {
-  url = "https://checkip.amazonaws.com/"
 }
 
 # Hub public subnet
@@ -97,12 +100,6 @@ resource "oci_core_security_list" "hub_sec" {
   }
 }
 
-# Transit DRG used by the hub (kept as in original layout)
-resource "oci_core_drg" "drg" {
-  compartment_id = var.compartment_id
-  display_name   = "transit-drg"
-}
-
 resource "oci_core_drg_attachment" "hub_drg_attach" {
   drg_id         = oci_core_drg.drg.id
   vcn_id         = oci_core_vcn.firewall_hub.id
@@ -132,23 +129,24 @@ resource "oci_core_instance" "pfsense_a" {
   display_name = "pfsense-a"
 
   # WAN vNIC
-  # create_vnic_details {
-  #   subnet_id = oci_core_subnet.hub_wan.id
-  #   assign_public_ip = true
-  #   display_name = "pfsense-a-wan"
-  # }
+  create_vnic_details {
+    subnet_id = oci_core_subnet.hub_wan.id
+    assign_public_ip = true
+    display_name = "pfsense-a-wan"
+  }
 
   shape_config {
     ocpus = 8
     memory_in_gbs = 16
   }
 
-  # TRUST/LAN vNIC
-  create_vnic_details {
-    subnet_id = oci_core_subnet.hub_trust.id
-    assign_public_ip = false
-    display_name = "pfsense-a-trust"
-  }
+  # # TRUST/LAN vNIC
+  // not supported due to https://github.com/oracle/terraform-provider-oci/issues/1797
+  # create_vnic_details {
+  #   subnet_id = oci_core_subnet.hub_trust.id
+  #   assign_public_ip = false
+  #   display_name = "pfsense-a-trust"
+  # }
 
   source_details {
     source_type = "image"
@@ -178,22 +176,25 @@ resource "oci_core_instance" "pfsense_b" {
   shape = var.shape
   display_name = "pfsense-b"
 
-  # create_vnic_details {
-  #   subnet_id = oci_core_subnet.hub_wan.id
-  #   assign_public_ip = true
-  #   display_name = "pfsense-b-wan"
-  # }
+  # WAN vNIC
+  create_vnic_details {
+    subnet_id = oci_core_subnet.hub_wan.id
+    assign_public_ip = true
+    display_name = "pfsense-b-wan"
+  }
 
   shape_config {
     ocpus = 8
     memory_in_gbs = 16
   }
   
-  create_vnic_details {
-    subnet_id = oci_core_subnet.hub_trust.id
-    assign_public_ip = false
-    display_name = "pfsense-b-trust"
-  }
+  # # TRUST/LAN vNIC
+  // not supported due to https://github.com/oracle/terraform-provider-oci/issues/1797
+  # create_vnic_details {
+  #   subnet_id = oci_core_subnet.hub_trust.id
+  #   assign_public_ip = false
+  #   display_name = "pfsense-b-trust"
+  # }
 
   source_details {
     source_type = "image"
@@ -215,6 +216,29 @@ resource "oci_core_instance" "pfsense_b" {
       TRUST_PREFIXES = "10.20.0.0/16 10.30.0.0/16 10.40.0.0/16"
     }))
   }
+}
+
+# Attach a secondary VNIC on the hub_trust subnet for the pfsense-a instance (LAN/trust interface)
+resource "oci_core_vnic_attachment" "pfsense_a_trust" {
+  create_vnic_details {
+    assign_public_ip = false
+    private_ip = cidrhost(oci_core_subnet.hub_trust.cidr_block, 5)
+    subnet_id    = oci_core_subnet.hub_trust.id
+  }
+  instance_id  = oci_core_instance.pfsense_a.id
+  display_name = "pfsense-a-trust"
+}
+
+# Attach a secondary VNIC on the hub_trust subnet for the pfsense-b instance (LAN/trust interface)
+resource "oci_core_vnic_attachment" "pfsense_b_trust" {
+    create_vnic_details {
+    assign_public_ip = false
+    private_ip = cidrhost(oci_core_subnet.hub_trust.cidr_block, 6)
+    subnet_id    = oci_core_subnet.hub_trust.id
+
+  }
+  instance_id  = oci_core_instance.pfsense_b.id
+  display_name = "pfsense-b-trust"
 }
 
 # Local Peering Gateway on the Firewall Hub VCN (used for VCN-A local peering)

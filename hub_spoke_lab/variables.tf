@@ -50,14 +50,15 @@ variable "pfsense_image_source_local_path" {
 variable "libreswan_image_id" {
   description = "Image OCID for Libreswan (on-prem)"
   type        = string
-  default     = "ocid1.image.oc1.phx.aaaaaaaa5gpxxac3r7wcxdumlaoac3o6hby3rqawsi3sorcr734cyx37yvca"
+  # default     = "ocid1.image.oc1.phx.aaaaaaaamdjb6c37rxomys4zrxelv3xeyxq27efrpttwwuwfnftksplud2ra" # oracle linux 8 with latest updates as of 2024-06-01, which includes libreswan 3.36
+  default     = "ocid1.image.oc1.phx.aaaaaaaa5gpxxac3r7wcxdumlaoac3o6hby3rqawsi3sorcr734cyx37yvca" # ubuntu
 }
 
 variable "ssh_public_key" {
   description = "SSH public key for instances"
   type        = string
   sensitive   = true // not really, but it is too noisy in logs
-  default     = "./secrets/oci-lab-test.pub"
+  default     = "./secrets/lab-key.pub"
 }
 
 variable "ubuntu_image_id" {
@@ -136,10 +137,4 @@ variable "cpe_bgp_asn" {
   description = "BGP ASN for the CPE (Libreswan)"
   type        = number
   default     = 65000
-}
-
-variable "oci_bgp_asn" {
-  description = "BGP ASN for the OCI/DRG side"
-  type        = number
-  default     = 65001
 }
