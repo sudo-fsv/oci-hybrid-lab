@@ -13,7 +13,7 @@ This lab evaluates the following:
 > [!IMPORTANT]  
 > Crucial information for the savvy network engineer reading while looking for guidance:
 > 1. This is not a best practices design guide. Its sole purpose is to evaluate an OCI design to enforce centralized firewall inspection as needed.
-> 2. There are two other obvious design options for the same goal: using an LB sandwich or the newer OCI Network Firewall as service. The first introduces unnecessary overhead to this lab, with the advantage of adding A/A to the equation. The latter does not offer vendor flexibility yet, with the advantage of eliminating the maintenance lifecycle overhead of firewall instances, plus the addition of natively integrated security policy management.
+> 2. There are two other obvious design options for the same goal: using a LB sandwich or the newer OCI Network Firewall as service. The first introduces unnecessary overhead to this lab, with the advantage of adding A/A to the equation. The latter does not offer vendor flexibility yet, with the advantage of reducing some of the maintenance lifecycle overhead of firewall instances, plus the addition of natively integrated security policy management.
 > 3. Latest designs for workload protection tend to favor descentralized approaches with dynamic policy enforcement (think K8s environment with ever changing IP addresses within the same address space, but also possibly across different name spaces within K8s iself). This is NOT in the scope of this lab.
 > 4. OCI would allow this design to scale to up to ~300 spoke VPCs, but that could easily create a bottle-neck depending on the scale of the E-W traffic.
 > 5. The pfSense firewalls are not fully supported in OCI in their commercial version yet (like AWS and Azure), so enterprise support to achieve best networking benchmarks could be a problem.
@@ -44,7 +44,7 @@ This repository contains Terraform code to build a small hub-and-spoke OCI lab w
     - `spokes_lpg_attach.tf` — Spoke VCN (VCN‑A) with LPG peering to the firewall hub, web instances and a private Load Balancer.
     - `spokes_drg_attach.tf` — Additional spoke VCNs (VCN‑B/VCN‑C) attached to the hub via DRG.
     - `onprem.tf` — On‑prem VCN, reserved public IP, Libreswan instance and OCI IPsec resources (CPE / IPsec connection / tunnel management).
-    - `scripts/` — cloud-init / user-data templates used by instances (pfSense, web servers, Libreswan reconciliation script).
+    - `scripts/` — cloud-init / user-data templates used by instances (pfSense, web servers and Libreswan).
 
 - **Networking summary**:
     - Hub VCN acts as a Firewall Hub with a DRG for transit to spoke DRG attachments and LPG for local peer to VCN‑A.
@@ -53,7 +53,6 @@ This repository contains Terraform code to build a small hub-and-spoke OCI lab w
     - Libreswan instance simulates on‑prem: it uses a reserved public IP and is configured (via `user_data`) to establish an IKEv2/IPsec tunnel to the hub's DRG and run BGP (FRR) to exchange routes.
 
 - **Operational notes**:
-    - The code templates the Libreswan and pfSense bootstraps and writes a reconciliation systemd timer to persist BGP‑learned routes.
     - Sensitive values (PSKs, pfSense passwords) are handled as Terraform sensitive variables or generated resources (e.g., `random_password`).
     - The configuration targets OCI Provider v7.29.0 resource shapes (IPsec tunnel management, LB/Backend resources, etc.).
 
@@ -69,16 +68,12 @@ Use `hub_spoke_lab/` as your working directory; populate a `terraform.tfvars` wi
 region = "us-ashburn-1"
 compartment_id = "ocid1.compartment.oc1..example"
 shape = "VM.Standard.E3.Flex"
-ssh_public_key = "ssh-rsa AAAA... user@example"
+ssh_public_key = "./secrets/lab-key.pub"
 web_domains = ["app1.example.com", "app2.example.com"]
 lb_shape = "100Mbps"
-
-# KMS key to encrypt instance source details (leave empty to skip)
-kms_key_ocid = ""
-
 ```
 
-Afterwards to run Terraform:
+- Then run Terraform:
 ```bash
 terraform init
 terraform plan
@@ -96,3 +91,9 @@ terraform apply
 7. https://docs.netgate.com/pfsense/en/latest/highavailability/test.html
 8. https://docs.oracle.com/en-us/iaas/images/ubuntu-2204/canonical-ubuntu-22-04-2025-10-31-0.htm
 9. https://atxfiles.netgate.com/mirror/downloads/
+10. https://github.com/oracle-quickstart/oci-cpe
+
+
+## WIP:
+1. Finalize pfsense full bootstrapping.
+2. Native routing of Hub so DRG routing leverage the pFsense firewall as next-hop for N-S (and possibly E-W).
