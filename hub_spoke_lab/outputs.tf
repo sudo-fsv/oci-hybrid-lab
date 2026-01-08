@@ -19,5 +19,5 @@ output "vcn_a_web2_public_ip" {
 }
 
 output "vcn_a_lb_private_ip" {
-  value       = oci_load_balancer_load_balancer.vcn_a_lb.ip_address_details[0].ip_address
+  value = oci_load_balancer_load_balancer.vcn_a_lb.ip_address_details[0].ip_address
 }

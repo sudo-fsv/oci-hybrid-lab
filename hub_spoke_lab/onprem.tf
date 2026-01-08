@@ -14,7 +14,6 @@ resource "oci_core_subnet" "onprem_public" {
 }
 
 # Reserve a public IP for the Libreswan CPE. This IP can be associated with the instance's
-# VNIC after the instance is created if you want traffic to reach the VM directly.
 resource "oci_core_public_ip" "libreswan_reserved_ip" {
   compartment_id = var.compartment_id
   lifetime       = "RESERVED"
@@ -23,10 +22,6 @@ resource "oci_core_public_ip" "libreswan_reserved_ip" {
     ignore_changes = [ private_ip_id ] # allow reassignment of the public IP without recreating the resource
   }
 }
-
-/* Replaced subnet-level security list with network security group rules attached
-   to the Libreswan instance's NSG. The instance's `create_vnic_details.nsg_ids`
-   already references `oci_core_network_security_group.libreswan_nsg`. */
 
 resource "oci_core_network_security_group_security_rule" "libreswan_ingress_myip" {
   network_security_group_id = oci_core_network_security_group.libreswan_nsg.id
@@ -98,7 +93,7 @@ resource "oci_core_network_security_group_security_rule" "libreswan_ingress_ipse
   description = "Allow NAT-T (UDP/4500) from OCI IPSEC peer 2"
 }
 
-# Pre-configure the DRG VPN with the reserved public IP, so we can bootstrap Libreswan
+# Pre-configure the DRG VPN with the reserved public IP to bootstrap Libreswan
 # generate a strong pre-shared key for the IPSec connection (sensitive)
 resource "random_password" "libreswan_psk_1" {
   length  = 32
@@ -110,15 +105,14 @@ resource "random_password" "libreswan_psk_2" {
   special = false
 }
 
-# OCI representation of the customer gateway (use the public IP of the libreswan instance)
+# OCI CPE with the public IP of the Libreswan instance
 resource "oci_core_cpe" "libreswan_cpe" {
   compartment_id = var.compartment_id
   display_name   = "libreswan-cpe"
   ip_address     = oci_core_public_ip.libreswan_reserved_ip.ip_address
 }
 
-# IPSec connection from the hub DRG to the Libreswan CPE. This will be created once the
-# libreswan instance public IP (used by the CPE) is available.
+# IPsec connection from the hub DRG to the Libreswan CPE
 resource "oci_core_ipsec" "libreswan_to_hub" {
   compartment_id = var.compartment_id
   drg_id         = oci_core_drg.drg.id
@@ -149,7 +143,6 @@ resource "oci_core_internet_gateway" "libreswan_igw" {
   enabled        = true
 }
 
-# Use the provider data to iterate tunnels, but fetch the tunnel vpn-ip via OCI CLI per tunnel
 ## Route table for the Libreswan CPE subnet: create /32 routes to each DRG tunnel VPN IP via the IGW
 resource "oci_core_route_table" "libreswan_cpe_rt" {
   compartment_id = var.compartment_id
@@ -179,6 +172,7 @@ resource "oci_core_route_table" "libreswan_cpe_rt" {
     }
   }
 }
+
 resource "oci_core_ipsec_connection_tunnel_management" "libreswan_tunnel_1" {
   ipsec_id   = oci_core_ipsec.libreswan_to_hub.id
   tunnel_id  = data.oci_core_ipsec_connection_tunnels.libreswan_tunnel.ip_sec_connection_tunnels[0].id
